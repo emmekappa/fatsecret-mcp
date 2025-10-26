@@ -1,0 +1,17 @@
+# Docker build context optimizations
+node_modules
+npm-debug.log*
+yarn-error.log*
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+coverage
+dist
+specs
+.specify
+.claude
+.codex
+utils
+

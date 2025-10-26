@@ -60,6 +60,10 @@ class FatSecretMCPServer {
     );
 
     this.configPath = path.join(os.homedir(), ".fatsecret-mcp-config.json");
+    // Allow override via environment variable for containerized runs
+    if (process.env.FATSECRET_CONFIG_PATH && process.env.FATSECRET_CONFIG_PATH.trim() !== "") {
+      this.configPath = process.env.FATSECRET_CONFIG_PATH.trim();
+    }
     this.config = {
       clientId: process.env.CLIENT_ID || "",
       clientSecret: process.env.CLIENT_SECRET || "",
@@ -69,11 +73,38 @@ class FatSecretMCPServer {
   }
 
   private async loadConfig(): Promise<void> {
+    let fileLoaded = false;
     try {
       const configData = await fs.readFile(this.configPath, "utf-8");
-      this.config = { ...this.config, ...JSON.parse(configData) };
+      const fileConfig = JSON.parse(configData);
+      this.config = { ...this.config, ...fileConfig };
+      fileLoaded = true;
     } catch (error) {
-      // Config file doesn't exist, will be created when credentials are set
+      // Config file doesn't exist or can't be read; we'll fall back to env vars if provided
+    }
+
+    // Environment tokens
+    const envAccessToken = process.env.ACCESS_TOKEN;
+    const envAccessTokenSecret = process.env.ACCESS_TOKEN_SECRET;
+    const envUserId = process.env.USER_ID;
+
+    const noCustomConfigPath = !process.env.FATSECRET_CONFIG_PATH || process.env.FATSECRET_CONFIG_PATH.trim() === "";
+
+    if (!fileLoaded) {
+      // No file -> use env if provided
+      if (envAccessToken) this.config.accessToken = envAccessToken;
+      if (envAccessTokenSecret) this.config.accessTokenSecret = envAccessTokenSecret;
+      if (envUserId) this.config.userId = envUserId;
+    } else if (noCustomConfigPath) {
+      // File loaded but FATSECRET_CONFIG_PATH is not set -> prefer env tokens if present
+      if (envAccessToken) this.config.accessToken = envAccessToken;
+      if (envAccessTokenSecret) this.config.accessTokenSecret = envAccessTokenSecret;
+      if (envUserId) this.config.userId = envUserId;
+    } else {
+      // File loaded with custom path -> backfill only if missing
+      if (!this.config.accessToken && envAccessToken) this.config.accessToken = envAccessToken;
+      if (!this.config.accessTokenSecret && envAccessTokenSecret) this.config.accessTokenSecret = envAccessTokenSecret;
+      if (!this.config.userId && envUserId) this.config.userId = envUserId;
     }
   }
 
