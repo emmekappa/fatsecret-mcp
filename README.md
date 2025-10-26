@@ -10,6 +10,10 @@ A Model Context Protocol (MCP) server that provides access to the FatSecret nutr
 - **User Data Management**: Access user food diaries and add food entries
 - **Secure Credential Storage**: Encrypted storage of API credentials and tokens
 
+## Contributor Guide
+
+New contributors should read the [Repository Guidelines](AGENTS.md) for project structure, workflows, and review expectations.
+
 ## Getting Started
 
 ### Prerequisites
@@ -30,6 +34,61 @@ npm install
 
 # Build the TypeScript
 npm run build
+```
+
+## Docker
+
+You can build and run the MCP server in a container.
+
+### Build the image
+
+```bash
+docker build -t fatsecret-mcp:local .
+```
+
+### Run with environment variables only
+
+```bash
+# Replace with your real credentials
+docker run --rm \
+  -e CLIENT_ID=your_client_id \
+  -e CLIENT_SECRET=your_client_secret \
+  fatsecret-mcp:local
+```
+
+### Run with a mounted volume for persistent config/tokens
+
+By default, the server saves config/tokens in the user home file `.fatsecret-mcp-config.json`. In the container we recommend mapping to `/data/.fatsecret-mcp-config.json` using the `FATSECRET_CONFIG_PATH` variable.
+
+```bash
+mkdir -p $HOME/fatsecret-mcp-data
+
+docker run --rm \
+  -e CLIENT_ID=your_client_id \
+  -e CLIENT_SECRET=your_client_secret \
+  -e FATSECRET_CONFIG_PATH=/data/.fatsecret-mcp-config.json \
+  -v $HOME/fatsecret-mcp-data:/data \
+  fatsecret-mcp:local
+```
+
+Note: At first run, the server will create/update the config file inside `/data`. Ensure the directory is writable by the container user.
+
+### Run the OAuth console utility (optional)
+
+```bash
+docker run --rm -it \
+  -e FATSECRET_CONFIG_PATH=/data/.fatsecret-mcp-config.json \
+  -v $HOME/fatsecret-mcp-data:/data \
+  --entrypoint node \
+  fatsecret-mcp:local dist/cli.js
+```
+
+### Healthcheck
+
+The image defines a basic healthcheck that reports healthy when the runtime is up. You can also probe logs or add a custom command if needed.
+
+```bash
+docker inspect --format='{{json .State.Health}}' $(docker run -d fatsecret-mcp:local) | jq
 ```
 
 ## Setup

@@ -60,6 +60,10 @@ class FatSecretMCPServer {
     );
 
     this.configPath = path.join(os.homedir(), ".fatsecret-mcp-config.json");
+    // Allow override via environment variable for containerized runs
+    if (process.env.FATSECRET_CONFIG_PATH && process.env.FATSECRET_CONFIG_PATH.trim() !== "") {
+      this.configPath = process.env.FATSECRET_CONFIG_PATH.trim();
+    }
     this.config = {
       clientId: process.env.CLIENT_ID || "",
       clientSecret: process.env.CLIENT_SECRET || "",
