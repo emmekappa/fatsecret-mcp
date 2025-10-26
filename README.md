@@ -4,11 +4,11 @@ A Model Context Protocol (MCP) server that provides access to the FatSecret nutr
 
 ## Features
 
-- **Complete OAuth 1.0a Implementation**: Full 3-legged OAuth flow for user authentication
-- **Food Database Access**: Search and retrieve detailed nutrition information
-- **Recipe Database**: Search for recipes and get detailed cooking instructions
-- **User Data Management**: Access user food diaries and add food entries
-- **Secure Credential Storage**: Encrypted storage of API credentials and tokens
+- Complete OAuth 1.0a implementation (3-legged) for user authentication
+- Food database access: search and retrieve detailed nutrition information
+- Recipe database: search for recipes and get detailed instructions
+- User data: access food diaries and add food entries
+- Secure credential handling: tokens signed with HMAC-SHA1 and HTTPS-only API calls
 
 ## Contributor Guide
 
@@ -38,7 +38,7 @@ npm run build
 
 ## Docker
 
-You can build and run the MCP server in a container.
+You can build and run the MCP server in a container. In Docker, the app always uses environment variables only; no configuration file is needed or used inside the container.
 
 ### Build the image
 
@@ -48,44 +48,42 @@ docker build -t fatsecret-mcp:local .
 
 ### Run with environment variables only
 
+- App credentials only (for public endpoints like search):
+
 ```bash
-# Replace with your real credentials
 docker run --rm \
   -e CLIENT_ID=your_client_id \
   -e CLIENT_SECRET=your_client_secret \
   fatsecret-mcp:local
 ```
 
-### Run with a mounted volume for persistent config/tokens
-
-By default, the server saves config/tokens in the user home file `.fatsecret-mcp-config.json`. In the container we recommend mapping to `/data/.fatsecret-mcp-config.json` using the `FATSECRET_CONFIG_PATH` variable.
+- With user tokens (for user-specific operations):
 
 ```bash
-mkdir -p $HOME/fatsecret-mcp-data
-
 docker run --rm \
   -e CLIENT_ID=your_client_id \
   -e CLIENT_SECRET=your_client_secret \
-  -e FATSECRET_CONFIG_PATH=/data/.fatsecret-mcp-config.json \
-  -v $HOME/fatsecret-mcp-data:/data \
+  -e ACCESS_TOKEN=your_access_token \
+  -e ACCESS_TOKEN_SECRET=your_access_token_secret \
+  -e USER_ID=optional_user_id \
   fatsecret-mcp:local
 ```
 
-Note: At first run, the server will create/update the config file inside `/data`. Ensure the directory is writable by the container user.
+Note: inside the container, no config file is used. FATSECRET_CONFIG_PATH and volumes are not required.
 
-### Run the OAuth console utility (optional)
+### Supported environment variables
 
-```bash
-docker run --rm -it \
-  -e FATSECRET_CONFIG_PATH=/data/.fatsecret-mcp-config.json \
-  -v $HOME/fatsecret-mcp-data:/data \
-  --entrypoint node \
-  fatsecret-mcp:local dist/cli.js
-```
+- CLIENT_ID: FatSecret Client ID (required)
+- CLIENT_SECRET: FatSecret Client Secret (required)
+- ACCESS_TOKEN: OAuth user access token (optional; required for user-specific tools)
+- ACCESS_TOKEN_SECRET: OAuth user access token secret (optional; required for user-specific tools)
+- USER_ID: FatSecret user ID (optional)
+
+Tip: You can obtain tokens using the CLI locally, then pass them to the container as environment variables.
 
 ### Healthcheck
 
-The image defines a basic healthcheck that reports healthy when the runtime is up. You can also probe logs or add a custom command if needed.
+The image defines a basic healthcheck that reports healthy when the runtime is up. You can also inspect logs or add a custom command if needed.
 
 ```bash
 docker inspect --format='{{json .State.Health}}' $(docker run -d fatsecret-mcp:local) | jq
@@ -93,15 +91,15 @@ docker inspect --format='{{json .State.Health}}' $(docker run -d fatsecret-mcp:l
 
 ## Setup
 
-### 1. Get FatSecret API Credentials
+### 1. Get FatSecret API credentials
 
 1. Visit the [FatSecret Platform](https://platform.fatsecret.com/)
 2. Create a developer account and register your application
-3. Note down your **Client ID** and **Client Secret**
+3. Note your Client ID and Client Secret
 
-### 2. Configure the MCP Server
+### 2. Configure the MCP server in your client
 
-The server needs to be configured in your MCP client (like Claude Desktop). Add this to your MCP configuration:
+Add the server to your MCP client (e.g., Claude Desktop):
 
 ```json
 {
@@ -116,117 +114,41 @@ The server needs to be configured in your MCP client (like Claude Desktop). Add 
 
 ### 3. Authentication Process
 
-#### Option 1: Using the OAuth Console Utility (Recommended)
+#### Option 1: OAuth Console (CLI) locally
 
-The easiest way to authenticate is using the included OAuth console utility:
+Use the included CLI utility to authenticate interactively on your machine (outside of Docker). When done, the CLI writes a local config file and prints a summary with values and copy-pasteable export commands, so you can run the container entirely with env vars.
 
 ```bash
-# Make sure you've built the project first
 npm run build
-
-# Run the OAuth console utility
 node dist/cli.js
 ```
 
-This interactive utility will:
-1. Ask for your Client ID and Client Secret
-2. Save them securely in `~/.fatsecret-mcp-config.json`
-3. Guide you through the OAuth flow:
-   - Opens your browser to the FatSecret authorization page
-   - Prompts you to paste the verifier code after authorization
-   - Saves the access tokens for future use
+Flow:
+1. Enter Client ID and Client Secret
+2. Complete OAuth in the browser and paste the verifier code
+3. The CLI saves credentials and prints: CLIENT_ID, CLIENT_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET, USER_ID, with export commands you can copy
 
-#### Option 2: Manual Authentication via MCP Tools
+#### Option 2: Authentication via MCP tools
 
-If you prefer to authenticate through the MCP interface (e.g., in Claude):
+You can perform OAuth via MCP tools (e.g., in Claude). Once you have tokens, provide them to Docker using env vars.
 
-1. **Set your API credentials:**
-   ```
-   Use tool: set_credentials
-   Parameters:
-   - clientId: "your_client_id_here"
-   - clientSecret: "your_client_secret_here"
-   ```
+#### Option 3: Environment variables locally
 
-2. **Start the OAuth flow:**
-   ```
-   Use tool: start_oauth_flow
-   Parameters:
-   - callbackUrl: "oob" (for out-of-band authentication)
-   ```
-
-3. **Visit the authorization URL** provided in the response:
-   - Log in to your FatSecret account (or create one)
-   - Click "Allow" to authorize the application
-   - Copy the verifier code shown on the page
-
-4. **Complete the OAuth flow:**
-   ```
-   Use tool: complete_oauth_flow
-   Parameters:
-   - requestToken: [from step 2 response]
-   - requestTokenSecret: [from step 2 response]
-   - verifier: [the code you copied from the authorization page]
-   ```
-
-#### Option 3: Using Environment Variables
-
-You can also provide credentials via environment variables:
-
-```bash
-# Create a .env file in the project root
-CLIENT_ID=your_client_id_here
-CLIENT_SECRET=your_client_secret_here
-
-# The server will automatically load these on startup
-```
-
-Note: You'll still need to complete the OAuth flow for user-specific operations.
+You can also use a `.env` file locally with CLIENT_ID and CLIENT_SECRET (and tokens if available). The server/CLI loads these variables automatically if present.
 
 ## Usage
 
-### 1. Set API Credentials
+### 1. Set API credentials
 
-First, set your FatSecret API credentials:
+Use the `set_credentials` tool with your Client ID and Client Secret.
 
-```
-Use the set_credentials tool with your Client ID and Client Secret
-```
+### 2. Authenticate a user (3-legged OAuth)
 
-### 2. Authenticate a User (3-Legged OAuth)
-
-For user-specific operations, you need to complete the OAuth flow:
-
-```
-1. Use start_oauth_flow tool (with callback URL or "oob" for out-of-band)
-2. Visit the provided authorization URL
-3. Authorize the application and get the verifier code
-4. Use complete_oauth_flow tool with the request token, secret, and verifier
-```
+For user-specific operations, complete the OAuth flow (via CLI or tools). In Docker, pass tokens as env vars.
 
 ### 3. Use the API
 
-Once authenticated, you can use all available tools:
-
-#### Food Search and Information
-
-- `search_foods`: Search for foods in the database
-- `get_food`: Get detailed nutrition information for a specific food
-
-#### Recipe Search and Information
-
-- `search_recipes`: Search for recipes
-- `get_recipe`: Get detailed recipe information including ingredients and instructions
-
-#### User Data (Requires Authentication)
-
-- `get_user_profile`: Get the authenticated user's profile
-- `get_user_food_entries`: Get food diary entries for a specific date
-- `add_food_entry`: Add a food entry to the user's diary
-
-#### Utility
-
-- `check_auth_status`: Check current authentication status
+Once authenticated, you can use all available tools.
 
 ## Available Tools
 
@@ -236,28 +158,25 @@ Once authenticated, you can use all available tools:
 
 Set your FatSecret API credentials.
 
-**Parameters:**
-
-- `clientId` (string, required): Your FatSecret Client ID
-- `clientSecret` (string, required): Your FatSecret Client Secret
+Parameters:
+- clientId (string, required)
+- clientSecret (string, required)
 
 #### `start_oauth_flow`
 
 Start the 3-legged OAuth flow.
 
-**Parameters:**
-
-- `callbackUrl` (string, optional): OAuth callback URL (default: "oob")
+Parameters:
+- callbackUrl (string, optional; default: "oob")
 
 #### `complete_oauth_flow`
 
 Complete the OAuth flow with authorization.
 
-**Parameters:**
-
-- `requestToken` (string, required): Request token from start_oauth_flow
-- `requestTokenSecret` (string, required): Request token secret from start_oauth_flow
-- `verifier` (string, required): OAuth verifier from authorization
+Parameters:
+- requestToken (string, required)
+- requestTokenSecret (string, required)
+- verifier (string, required)
 
 #### `check_auth_status`
 
@@ -269,19 +188,17 @@ Check current authentication status.
 
 Search for foods in the FatSecret database.
 
-**Parameters:**
-
-- `searchExpression` (string, required): Search term
-- `pageNumber` (number, optional): Page number (default: 0)
-- `maxResults` (number, optional): Max results per page (default: 20)
+Parameters:
+- searchExpression (string, required)
+- pageNumber (number, optional; default: 0)
+- maxResults (number, optional; default: 20)
 
 #### `get_food`
 
 Get detailed information about a specific food.
 
-**Parameters:**
-
-- `foodId` (string, required): FatSecret food ID
+Parameters:
+- foodId (string, required)
 
 ### Recipe Database Tools
 
@@ -289,19 +206,17 @@ Get detailed information about a specific food.
 
 Search for recipes in the FatSecret database.
 
-**Parameters:**
-
-- `searchExpression` (string, required): Search term
-- `pageNumber` (number, optional): Page number (default: 0)
-- `maxResults` (number, optional): Max results per page (default: 20)
+Parameters:
+- searchExpression (string, required)
+- pageNumber (number, optional; default: 0)
+- maxResults (number, optional; default: 20)
 
 #### `get_recipe`
 
 Get detailed information about a specific recipe.
 
-**Parameters:**
-
-- `recipeId` (string, required): FatSecret recipe ID
+Parameters:
+- recipeId (string, required)
 
 ### User Data Tools (Requires Authentication)
 
@@ -313,87 +228,71 @@ Get the authenticated user's profile information.
 
 Get user's food diary entries for a specific date.
 
-**Parameters:**
-
-- `date` (string, optional): Date in YYYY-MM-DD format (default: today)
+Parameters:
+- date (string, optional; YYYY-MM-DD, default: today)
 
 #### `add_food_entry`
 
 Add a food entry to the user's diary.
 
-**Parameters:**
-
-- `foodId` (string, required): FatSecret food ID
-- `servingId` (string, required): Serving ID for the food
-- `quantity` (number, required): Quantity of the serving
-- `mealType` (string, required): Meal type (breakfast, lunch, dinner, snack)
-- `date` (string, optional): Date in YYYY-MM-DD format (default: today)
+Parameters:
+- foodId (string, required)
+- servingId (string, required)
+- quantity (number, required)
+- mealType (string, required: breakfast, lunch, dinner, snack)
+- date (string, optional; YYYY-MM-DD, default: today)
 
 ## Example Workflow
 
-1. **Setup Credentials:**
+1. Setup credentials
 
-   ```
    Tool: set_credentials
    - clientId: "your_client_id"
    - clientSecret: "your_client_secret"
-   ```
 
-2. **Search for Foods:**
+2. Search for foods
 
-   ```
    Tool: search_foods
    - searchExpression: "chicken breast"
-   ```
 
-3. **Get Food Details:**
+3. Get food details
 
-   ```
    Tool: get_food
    - foodId: "12345"
-   ```
 
-4. **Authenticate User (if needed):**
+4. Authenticate user (if needed)
 
-   ```
    Tool: start_oauth_flow
    - callbackUrl: "oob"
 
-   # Follow the authorization URL, then:
+   Then:
 
    Tool: complete_oauth_flow
    - requestToken: "from_start_oauth_flow"
    - requestTokenSecret: "from_start_oauth_flow"
    - verifier: "from_authorization_page"
-   ```
 
-5. **Add Food to Diary:**
-   ```
+5. Add food to diary
+
    Tool: add_food_entry
    - foodId: "12345"
    - servingId: "67890"
    - quantity: 1
    - mealType: "lunch"
-   ```
 
 ## Configuration Storage
 
-The server stores configuration (credentials and tokens) in `~/.fatsecret-mcp-config.json`. This file contains:
-
-- API credentials (Client ID and Secret)
-- OAuth access tokens (when authenticated)
-- User ID (when authenticated)
+- Local (non-Docker) runs: the server saves configuration/tokens to `~/.fatsecret-mcp-config.json`.
+- Docker: no file is used; configuration is passed only via environment variables.
 
 ## Security Notes
 
-- Credentials are stored locally in your home directory
-- OAuth tokens are securely managed using proper HMAC-SHA1 signing
+- Credentials are handled locally and tokens are properly signed using HMAC-SHA1
 - All API communications use HTTPS
-- The server implements proper OAuth 1.0a security measures
 
 ## API Reference
 
-This server implements the FatSecret Platform API. For detailed API documentation, visit:
+This server talks to the FatSecret Platform API. See:
 
 - [FatSecret Platform API Documentation](https://platform.fatsecret.com/docs/guides)
 - [OAuth 1.0a Specification](https://tools.ietf.org/html/rfc5849)
@@ -410,68 +309,40 @@ The server provides detailed error messages for common issues:
 
 ## Testing
 
-### Testing from the Command Line
+### Testing from the command line
 
-The project includes several test utilities:
+Utilities included in `utils/`:
 
-#### 1. Interactive Test Tool
+1) Interactive test tool
 
 ```bash
-# Run the interactive test menu
-node test-interactive.js
+node utils/test-interactive.js
 ```
 
-This provides a menu-driven interface to test all MCP tools.
-
-#### 2. Date Conversion Test
+2) Date conversion test
 
 ```bash
-# Test the date conversion logic
-node test-date-conversion.js
+node utils/test-date-conversion.js
 ```
 
-Verifies that dates are correctly converted to FatSecret's "days since epoch" format.
-
-#### 3. Direct JSON-RPC Testing
+3) Direct JSON-RPC testing
 
 ```bash
-# Send test messages via pipe
-node test-mcp.js | node dist/index.js
+node utils/test-mcp.js | node dist/index.js
 ```
 
 ### Testing in Claude Desktop
 
 1. Restart Claude Desktop after configuring the MCP server
 2. Look for "fatsecret" in the available tools
-3. Start by using `check_auth_status` to verify the connection
+3. Start with `check_auth_status` to verify the connection
 
 ## Troubleshooting
 
-### Common Issues
-
-#### "Invalid integer value: date"
-- The FatSecret API expects dates as days since epoch (1970-01-01)
-- The server automatically converts YYYY-MM-DD format dates
-- If you get this error, ensure you're using the latest version
-
-#### OAuth Authentication Fails
-- Verify your Client ID and Client Secret are correct
-- Ensure you're using the correct URLs (authentication.fatsecret.com for OAuth)
-- Check that you're copying the entire verifier code from the authorization page
-
-#### Server Not Found in Claude
-- Ensure the path in your MCP configuration is absolute, not relative
-- Verify the server was built successfully (`npm run build`)
-- Check Claude's logs for any error messages
-
-#### "User authentication required"
-- Complete the OAuth flow using either the CLI utility or MCP tools
-- Check authentication status with `check_auth_status` tool
-- Tokens are saved in `~/.fatsecret-mcp-config.json`
+- In Docker, pass user tokens via environment variables to use user-specific tools.
+- If you see "User authentication required", complete OAuth (CLI or tools) and re-run with ACCESS_TOKEN and ACCESS_TOKEN_SECRET set in the container.
 
 ## Development
-
-To modify or extend the server:
 
 ```bash
 # Install dependencies
@@ -481,7 +352,7 @@ npm install
 npm run build
 npm start
 
-# Development mode with auto-rebuild
+# Development mode with quick rebuild
 npm run dev
 ```
 
@@ -493,7 +364,7 @@ fatsecret-mcp/
 │   ├── index.ts        # Main MCP server implementation
 │   └── cli.ts          # OAuth console utility
 ├── dist/               # Compiled JavaScript files
-├── test-*.js           # Test utilities
+├── utils/              # Test utilities
 ├── package.json
 ├── tsconfig.json
 └── README.md

@@ -55,16 +55,70 @@ class FatSecretOAuthConsole {
   }
 
   private async loadConfig(): Promise<void> {
+    let fileLoaded = false;
     try {
       const configData = await fs.readFile(this.configPath, "utf-8");
       this.config = { ...this.config, ...JSON.parse(configData) };
+      fileLoaded = true;
     } catch (error) {
       // Config file doesn't exist
+    }
+
+    const envAccessToken = process.env.ACCESS_TOKEN;
+    const envAccessTokenSecret = process.env.ACCESS_TOKEN_SECRET;
+    const envUserId = process.env.USER_ID;
+    const noCustomConfigPath = !process.env.FATSECRET_CONFIG_PATH || process.env.FATSECRET_CONFIG_PATH.trim() === "";
+
+    if (!fileLoaded) {
+      if (envAccessToken) this.config.accessToken = envAccessToken;
+      if (envAccessTokenSecret) this.config.accessTokenSecret = envAccessTokenSecret;
+      if (envUserId) this.config.userId = envUserId;
+    } else if (noCustomConfigPath) {
+      if (envAccessToken) this.config.accessToken = envAccessToken;
+      if (envAccessTokenSecret) this.config.accessTokenSecret = envAccessTokenSecret;
+      if (envUserId) this.config.userId = envUserId;
+    } else {
+      if (!this.config.accessToken && envAccessToken) this.config.accessToken = envAccessToken;
+      if (!this.config.accessTokenSecret && envAccessTokenSecret) this.config.accessTokenSecret = envAccessTokenSecret;
+      if (!this.config.userId && envUserId) this.config.userId = envUserId;
     }
   }
 
   private async saveConfig(): Promise<void> {
     await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
+  }
+
+  private printConfigAndEnvSummary(): void {
+    console.log("\n=== Configuration Summary ===\n");
+    console.log(`Will be saved to: ${this.configPath}`);
+
+    // Build a minimal object only with defined fields
+    const cfg: any = {
+      clientId: this.config.clientId,
+      clientSecret: this.config.clientSecret,
+    };
+    if (this.config.accessToken) cfg.accessToken = this.config.accessToken;
+    if (this.config.accessTokenSecret) cfg.accessTokenSecret = this.config.accessTokenSecret;
+    if (this.config.userId) cfg.userId = this.config.userId;
+
+    console.log("\nFile contents (JSON):\n");
+    console.log(JSON.stringify(cfg, null, 2));
+
+    console.log("\nYou can also provide these via environment variables (useful in Docker/K8s):\n");
+    console.log(`CLIENT_ID=${this.config.clientId}`);
+    console.log(`CLIENT_SECRET=${this.config.clientSecret}`);
+    console.log(`ACCESS_TOKEN=${this.config.accessToken || ""}`);
+    console.log(`ACCESS_TOKEN_SECRET=${this.config.accessTokenSecret || ""}`);
+    if (this.config.userId) console.log(`USER_ID=${this.config.userId}`);
+
+    console.log("\nFor zsh/bash, you can export them like this:\n");
+    console.log(`export CLIENT_ID='${this.config.clientId}'`);
+    console.log(`export CLIENT_SECRET='${this.config.clientSecret}'`);
+    if (this.config.accessToken) console.log(`export ACCESS_TOKEN='${this.config.accessToken}'`);
+    if (this.config.accessTokenSecret) console.log(`export ACCESS_TOKEN_SECRET='${this.config.accessTokenSecret}'`);
+    if (this.config.userId) console.log(`export USER_ID='${this.config.userId}'`);
+
+    console.log("\nNote:\n- If FATSECRET_CONFIG_PATH is not set or the config file is missing, the server/CLI will use environment variables.\n- If FATSECRET_CONFIG_PATH points to a file, env vars will backfill any missing values.\n");
   }
 
   private createReadlineInterface(): readline.Interface {
@@ -528,6 +582,9 @@ class FatSecretOAuthConsole {
       // Show final status
       console.log();
       await this.checkStatus();
+
+      // Print summary with file JSON and environment variables
+      this.printConfigAndEnvSummary();
 
       console.log(
         "\nSetup complete! You can now use the FatSecret MCP server.",

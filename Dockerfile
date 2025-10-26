@@ -26,14 +26,9 @@ WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app \
   && apk add --no-cache dumb-init
 
-# Environment
+# Environment: rely solely on environment variables for configuration
 ENV NODE_ENV=production \
-    FATSECRET_CONFIG_PATH=/data/.fatsecret-mcp-config.json \
     NODE_OPTIONS="--enable-source-maps"
-
-# Prepare data directory for config persistence
-RUN mkdir -p /data && chown -R app:app /data
-VOLUME ["/data"]
 
 # Copy only what is needed at runtime
 COPY --chown=app:app package*.json ./
